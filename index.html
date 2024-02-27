@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Othello</title>
+    <style>
+        *{
+            background-color: antiquewhite;
+        }
+        #board {
+            display: grid;
+            grid-template-columns: repeat(8, 50px);
+            grid-template-rows: repeat(8, 50px);
+            gap: 2px;
+        }
+
+        .cell {
+            width: 50px;
+            height: 50px;
+            background-color: green;
+            border: 1px solid black;
+        }
+
+        .black {
+            background-color: black;
+            border-radius: 50%;
+        }
+
+        .white {
+            background-color: white;
+            border-radius: 50%;
+        }
+
+        .counts {
+            background-color: hsl(0, 50%, 53%);
+            border: none;
+            color: white;
+            padding: 15px 32px;
+            margin-bottom: 10px;
+            text-align: center;
+            text-decoration: none;
+            display: inline-block;
+            font-size: 16px;
+            cursor: pointer;
+            border-radius: 12px;
+
+        }
+
+        #restart,
+        #undo {
+            background-color: #b84040;
+            border: none;
+            color: white;
+            padding: 15px 32px;
+            text-align: center;
+            font-size: 16px;
+            margin: 4px 2px;
+            cursor: pointer;
+            border-radius: 12px;
+
+        }
+
+        #buttons {
+            margin-top: 10px;
+        }
+
+
+        /* Style for the alert box */
+        #alertBox {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: linear-gradient(to bottom, #ff0000, #0000ff);
+            border: 1px solid #ccc;
+            padding: 20px;
+            text-align: center;
+            display: none;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="counts" class="counts">Black: 2 | White: 2</div>
+    <div id="board"></div>
+    <div id="buttons">
+        <button id="restart">Restart Game</button>
+        <button id="undo">Undo</button>
+    </div>
+
+    <!-- Alert box -->
+    <div id="alertBox">
+        <p id="alertMessage"></p>
+        <button id="alertButton">OK</button>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            const board = document.getElementById('board');
+            const counts = document.getElementById('counts');
+            const restartBtn = document.getElementById('restart');
+            const undoBtn = document.getElementById('undo');
+            const alertBox = document.getElementById('alertBox');
+            const alertMessage = document.getElementById('alertMessage');
+            const alertButton = document.getElementById('alertButton');
+
+            const size = 8; // Size of the board
+            const EMPTY = 0;
+            const BLACK = 1;
+            const WHITE = 2;
+            let currentPlayer = BLACK;
+            let blackCount = 2;
+            let whiteCount = 2;
+
+            let squares = [];
+            let history = [];
+            let lastMove = null;
+
+            function initializeBoard() {
+                for (let i = 0; i < size; i++) {
+                    squares[i] = [];
+                    for (let j = 0; j < size; j++) {
+                        squares[i][j] = EMPTY;
+                    }
+                }
+                squares[3][3] = WHITE;
+                squares[3][4] = BLACK;
+                squares[4][3] = BLACK;
+                squares[4][4] = WHITE;
+                renderBoard();
+                updateCounts();
+            }
+
+            function renderBoard() {
+                board.innerHTML = ''; // Clear the board before rendering
+                for (let i = 0; i < size; i++) {
+                    for (let j = 0; j < size; j++) {
+                        const cell = document.createElement('div');
+                        cell.classList.add('cell');
+                        cell.dataset.row = i;
+                        cell.dataset.col = j;
+                        if (squares[i][j] === BLACK) {
+                            cell.classList.add('black');
+                        } else if (squares[i][j] === WHITE) {
+                            cell.classList.add('white');
+                        }
+                        cell.addEventListener('click', () => handleClick(i, j));
+                        board.appendChild(cell);
+                    }
+                }
+            }
+
+            function isValidMove(row, col) {
+                if (squares[row][col] !== EMPTY) return false;
+                // Check if there is at least one adjacent opponent's piece
+                for (let dr = -1; dr <= 1; dr++) {
+                    for (let dc = -1; dc <= 1; dc++) {
+                        if (dr === 0 && dc === 0) continue;
+                        if (row + dr >= 0 && row + dr < size && col + dc >= 0 && col + dc < size && squares[row + dr][col + dc] === getOpponent()) {
+                            let r = row + dr;
+                            let c = col + dc;
+                            while (r >= 0 && r < size && c >= 0 && c < size && squares[r][c] === getOpponent()) {
+                                r += dr;
+                                c += dc;
+                            }
+                            if (r >= 0 && r < size && c >= 0 && c < size && squares[r][c] === currentPlayer) {
+                                return true;
+                            }
+                        }
+                    }
+                }
+                return false;
+            }
+
+            function handleClick(row, col) {
+                if (isValidMove(row, col)) {
+                    saveHistory();
+                    squares[row][col] = currentPlayer;
+                    flipPieces(row, col);
+                    currentPlayer = currentPlayer === BLACK ? WHITE : BLACK;
+                    renderBoard();
+                    suggestMoves();
+                    updateCounts();
+                }
+            }
+
+            function flipPieces(row, col) {
+                for (let dr = -1; dr <= 1; dr++) {
+                    for (let dc = -1; dc <= 1; dc++) {
+                        if (dr === 0 && dc === 0) continue;
+                        let r = row + dr;
+                        let c = col + dc;
+                        let piecesToFlip = [];
+                        while (r >= 0 && r < size && c >= 0 && c < size && squares[r][c] === getOpponent()) {
+                            piecesToFlip.push({ row: r, col: c });
+                            r += dr;
+                            c += dc;
+                        }
+                        if (r >= 0 && r < size && c >= 0 && c < size && squares[r][c] === currentPlayer) {
+                            piecesToFlip.forEach(piece => {
+                                squares[piece.row][piece.col] = currentPlayer;
+                            });
+                        }
+                    }
+                }
+            }
+
+            function getOpponent() {
+                return currentPlayer === BLACK ? WHITE : BLACK;
+            }
+
+            function suggestMoves() {
+                let validMoveExists = false;
+                const cells = document.querySelectorAll('.cell');
+                cells.forEach(cell => {
+                    const row = parseInt(cell.dataset.row);
+                    const col = parseInt(cell.dataset.col);
+                    if (isValidMove(row, col)) {
+                        cell.style.border = '2px solid yellow';
+                        validMoveExists = true;
+                    } else {
+                        cell.style.border = '1px solid black';
+                    }
+                });
+                if (!validMoveExists) {
+                    const winner = blackCount > whiteCount ? 'Black' : 'White';
+                    showAlert(`No valid moves left. ${winner} wins!`);
+                    restartBtn.style.display = 'block';
+                }
+            }
+
+            function showAlert(message) {
+                alertBox.style.display = 'block';
+                alertMessage.textContent = message;
+            }
+
+            function updateCounts() {
+                blackCount = 0;
+                whiteCount = 0;
+                for (let i = 0; i < size; i++) {
+                    for (let j = 0; j < size; j++) {
+                        if (squares[i][j] === BLACK) {
+                            blackCount++;
+                        } else if (squares[i][j] === WHITE) {
+                            whiteCount++;
+                        }
+                    }
+                }
+                counts.textContent = `Black: ${blackCount} | White: ${whiteCount}`;
+            }
+
+            function saveHistory() {
+                const copy = squares.map(row => row.slice());
+                history.push(copy);
+                undoBtn.style.display = 'block';
+                lastMove = copy;
+            }
+
+            function undoMove() {
+                if (history.length > 0) {
+                    squares = history.pop();
+                    currentPlayer = currentPlayer === BLACK ? WHITE : BLACK;
+                    renderBoard();
+                    updateCounts();
+                    undoBtn.style.display = history.length > 0 ? 'block' : 'none';
+                    lastMove = history.length > 0 ? history[history.length - 1] : null;
+                    suggestMoves(); // Show valid moves again after undoing a move
+                }
+            }
+
+            restartBtn.addEventListener('click', function () {
+                history = []; // Clear the history
+                initializeBoard(); // Reset the board to its initial state
+                suggestMoves(); // Show valid moves again
+                lastMove = null; // Reset last move
+                alertBox.style.display = 'none'; // Hide the alert box on restart
+            });
+
+            undoBtn.addEventListener('click', undoMove);
+
+            alertButton.addEventListener('click', function () {
+                alertBox.style.display = 'none'; // Hide the alert box on OK button click
+            });
+
+            initializeBoard();
+            suggestMoves();
+        });
+    </script>
+</body>
+
+</html>
